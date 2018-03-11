@@ -1,0 +1,101 @@
+---
+title: "new data"
+author: "Danielle Zhang"
+date: "07/02/2018"
+output: 
+  html_document:
+    toc: TRUE
+    toc_depth: 3
+    toc_float: TRUE
+    code_folding: show
+---
+
+##loading new data
+```{r}
+library(tidyverse)
+
+data1 = read.csv("data/KI kill 1 20160524 Greenham.csv") %>% 
+  janitor::clean_names()
+
+data2 = read.csv("data/KI kill 2 20160607 Greenham.csv") %>% 
+  janitor::clean_names()
+
+data3 = read.csv("data/Tas kill 1 Greenham 20160701Result.csv") %>% 
+  janitor::clean_names()
+
+data4 = read.csv("data/Tas kill 2 Greenham 20160715 Result.csv") %>% 
+  janitor::clean_names()
+
+x = bind_rows(data1, data2, data4) %>% dplyr::select(ends_with("for_lean"), meatcolour, a_mc) 
+
+x = x %>% mutate(meatcolour = ifelse(meatcolour == "1C", "1",meatcolour),
+                       meatcolour = as.integer(meatcolour),
+                       amc = coalesce(meatcolour, a_mc)) %>% 
+  dplyr::select(amc, ends_with("for_lean")) %>% 
+  mutate(amc_hilo = ifelse(amc <= 3, 0, 1)) %>% 
+  na.omit()
+
+x %>% group_by(amc_hilo) %>% summarise(count = n())
+```
+## classification
+###validation set
+```{R}
+set.seed(1)
+train = sample(353, 180)
+rgb_class = glm(amc_hilo~average_of_r_for_lean + average_of_g_for_lean + average_of_b_for_lean, family = binomial, data = x, subset = train)
+class_prob = predict(rgb_class, x, type = "response")
+class_pred = rep(0, 353)
+class_pred[class_prob > 0.5] = 1
+table(class_pred[-train], x$amc_hilo[-train])
+mean((class_pred == x$amc_hilo)[-train])
+```
+
+### 10-fold cross validation
+```{r}
+library(boot)
+set.seed(2)
+rgb_class2 = glm(amc_hilo~average_of_r_for_lean + average_of_g_for_lean + average_of_b_for_lean, family = binomial, data = x)
+cv_error = cv.glm(x, rgb_class2, K = 10)$delta[1]
+cv_error
+```
+
+##amc linera regression
+### validation set
+```{r}
+set.seed(3)
+train2 = sample(353, 180)
+rgb_fit = lm(amc~average_of_r_for_lean + average_of_g_for_lean + average_of_b_for_lean, data = x, subset = train2)
+summary(rgb_fit)
+#mean square error
+mean((predict(rgb_fit, x) - x$amc)[-train2]^2)
+# can compare this to the baseline variance in the data
+var(x$amc)
+```
+
+```{r}
+plot(rgb_fit)
+```
+
+
+### 10-fold cross validation
+```{r}
+set.seed(4)
+rgb_fit2 = glm(amc~average_of_r_for_lean + average_of_g_for_lean + average_of_b_for_lean, data = x)
+cv_error = cv.glm(x, rgb_fit2, K = 3)$delta[1]
+cv_error
+
+```
+
+## amc linear discriminant analysis
+```{r}
+library(MASS)
+set.seed(5)
+train3 = sample(353, 180)
+lda_fit = lda(amc~average_of_r_for_lean + average_of_g_for_lean + average_of_b_for_lean, data = x, subset = train3)
+lda_fit
+lda_pred = predict(lda_fit, x)
+mean(lda_pred$class[-train3] == x$amc[-train3])
+```
+
+
+
