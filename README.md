@@ -1,0 +1,4 @@
+# 2018summer
+stats research in meat colour measurement in R, including functional data analysis.
+
+Functional data is where we observe a curve for each sample. Examples of functional data include growth curves, brain electrical activity and colour spectra measurements. It is important to be able to identify any unusual sample curves that do not align closely with other observations so that they can be dealt with appropriately in any subsequent analysis of the data. This project will explore approaches to outlier identification in functional data obtained from meat colour spectra measurements.  We are also interested in classifying functional measurements into multiple categories and assessing the accuracy of such automated approaches to colour measurement calibrated against a trained human assessor. 
