@@ -1,0 +1,351 @@
+---
+title: "cmc regression"
+author: "Danielle Zhang"
+date: "22/01/2018"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+---
+
+## Import data
+
+```{r, message=FALSE}
+library(tidyverse)
+
+x = read_csv("data/AtoPandTcmc.csv") %>% 
+  janitor::clean_names() %>% mutate(date = lubridate::as_date(timestamp))
+
+x2= x %>% filter(retail == 'pre') %>% 
+  dplyr::select(cmc, hunter_l, hunter_a, hunter_b, nix_a, nix_b, nix_l, retail)
+
+```
+
+
+## Modelling with Lab
+
+### Nix L vs Hunter L
+
+
+```{r}
+# l model using hunter l to predict nix l
+
+x2 %>% ggplot(aes(x = hunter_l, y= nix_l)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  geom_abline() + 
+  coord_cartesian(xlim = c(10,60),ylim = c(10,60))
+
+l_model = lm(nix_l ~ hunter_l, data = x2)
+summary(l_model)
+
+# l model using nix l to predict hunter l
+
+x2 %>% ggplot(aes(y = hunter_l, x= nix_l)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  geom_abline() + 
+  coord_cartesian(xlim = c(10,60),ylim = c(10,60))
+
+
+l_model = lm(hunter_l ~ nix_l, data = x2)
+summary(l_model)
+```
+
+
+### Simple linear regressions of cmc against L a b
+
+cmc with hunter_l-b
+```{r}
+# consumer meat colour score
+
+cmc_model = lm(cmc~ hunter_l+ hunter_a + hunter_b, data = x2)
+summary(cmc_model)
+
+p1 = x2 %>% ggplot(aes(y = cmc, x= hunter_l)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+
+p2 = x2 %>% ggplot(aes(y = cmc, x= hunter_a)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+
+p3 = x2 %>% ggplot(aes(y = cmc, x= hunter_b)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+
+p1
+p2
+p3
+
+```
+
+```{r}
+#par(mfrow = c(2,2))
+library(ggfortify)
+autoplot(cmc_model)
+#plot(cmc_model)
+```
+
+cmc hunter model with interactive predictors
+
+```{r}
+cmc_model2 = lm(cmc~ hunter_l*hunter_a*hunter_b, data = x2)
+summary(cmc_model2)
+
+cmc_model3 = lm(cmc~ hunter_l + hunter_a*hunter_b, data = x2)
+summary(cmc_model3)
+
+anova(cmc_model, cmc_model2)
+
+# par(mfrow = c(2,2))
+##autoplot(cmc_model3)
+# plot(cmc_model2)
+# plot(cmc_model3)
+```
+
+
+cmc model with nix lab 
+
+```{r}
+cmc_model4 = lm(cmc~ nix_l + nix_a + nix_b, data = x2)
+summary(cmc_model4)
+
+cmc_model5 = lm(cmc~ nix_l * nix_a * nix_b, data = x2)
+summary(cmc_model5)
+
+cmc_model5b = lm(cmc~ nix_l * nix_a + nix_l * nix_b + nix_a * nix_b, data = x2)
+summary(cmc_model5b)
+
+anova(cmc_model4, cmc_model5)
+anova(cmc_model5b, cmc_model5)
+
+```
+
+
+non-linear cmc model with hunter lab
+
+```{r}
+cmc_model7 = lm(cmc~ hunter_l + hunter_a+ hunter_b + I(hunter_l ^2), data = x2)
+summary(cmc_model7)
+plot(cmc_model7)
+```
+
+```{r}
+cmc_model8 = lm(cmc~ hunter_l*hunter_a*hunter_b +  I(hunter_l ^2) + I(hunter_a ^2) + I(hunter_b ^2) , data = x2)
+summary(cmc_model8)
+plot(cmc_model8)
+
+```
+
+
+```{r}
+cmc_model9a = x2 %>% 
+  dplyr::select(cmc, hunter_l, hunter_a, hunter_b) %>% 
+  na.omit() %>% 
+  lm(cmc~ hunter_b*hunter_a*hunter_l  + poly(hunter_l,4) + poly(hunter_a,4) + poly(hunter_b,4) , data = .)
+
+cmc_model9b = x2 %>% 
+  dplyr::select(cmc, hunter_l, hunter_a, hunter_b) %>% 
+  na.omit() %>% 
+  lm(cmc~hunter_b*hunter_a*hunter_l+ poly(hunter_l,3) + poly(hunter_a,3) + poly(hunter_b,3) , data = .)
+
+summary(cmc_model9b)
+
+anova(cmc_model9b, cmc_model9a)
+
+cmc_model9c = x2 %>% 
+  dplyr::select(cmc, hunter_l, hunter_a, hunter_b) %>% 
+  na.omit() %>% 
+  lm(cmc~ hunter_b*hunter_a*hunter_l + poly(hunter_l,2) + poly(hunter_a,2) + poly(hunter_b,2), data = .)
+
+summary(cmc_model9c)
+
+anova(cmc_model9c, cmc_model9b)
+
+
+```
+
+filtered data well picked up, go back and filter to pre so we've only got one unique cmc value for each sample.
+
+```{r}
+x3 = x2 %>% filter(retail == 'pre')
+x3 %>% ggplot(aes(y = cmc, x= hunter_l)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+x3 %>% ggplot(aes(y = cmc, x= hunter_a)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+x3 %>% ggplot(aes(y = cmc, x= hunter_b)) + 
+  geom_point() + 
+  geom_smooth(method = "lm")
+
+```
+
+## CMYK regressions
+
+pre, nix cmyk regression
+
+```{r}
+x4 = x %>% filter(retail == 'pre') %>% dplyr::select(eqsref, cmc, nix_cyan, nix_magenta, nix_yellow, nix_key)
+
+x4 %>% ggplot(aes(y = cmc, x= nix_cyan)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+
+x4 %>% ggplot(aes(y = cmc, x= nix_magenta)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+
+x4 %>% ggplot(aes(y = cmc, x= nix_yellow)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+
+x4 %>% ggplot(aes(y = cmc, x= nix_key)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+```
+
+
+```{r}
+cmyk_model = lm(cmc~ nix_cyan + nix_magenta + nix_yellow + nix_key, data = x4)
+summary(cmyk_model)
+
+```
+
+```{r}
+cmyk_model2 = lm(cmc~ nix_cyan * nix_magenta + nix_cyan * nix_yellow + nix_cyan * nix_key + nix_magenta * nix_yellow + nix_magenta * nix_key + nix_yellow * nix_key, data = x4)
+summary(cmyk_model2)
+
+anova(cmyk_model, cmyk_model2)
+```
+
+```{r}
+cmyk_model3 = lm(cmc~ nix_cyan * nix_magenta * nix_yellow * nix_key - nix_cyan : nix_magenta : nix_yellow : nix_key, data = x4)
+summary(cmyk_model3)
+```
+
+```{r}
+cmyk_model4 = lm(cmc~ nix_cyan * nix_magenta * nix_yellow * nix_key, data = x4)
+summary(cmyk_model4)
+
+```
+
+```{r}
+anova(cmyk_model, cmyk_model4)
+```
+
+```{r}
+cmyk_model5 = lm(cmc~ poly(nix_cyan,2) + poly(nix_magenta,2) + poly(nix_yellow,2) + poly(nix_key,2), data = x4 %>% 
+  dplyr::select(cmc, nix_cyan, nix_magenta, nix_yellow, nix_key) %>% na.omit())
+summary(cmyk_model5)
+```
+
+```{r}
+cmyk_model6 = lm(cmc ~ I(nix_cyan ^2) + I(nix_magenta ^2) + I(nix_yellow ^2) + I(nix_key ^2) + nix_cyan * nix_magenta * nix_yellow * nix_key, data = x4)
+summary(cmyk_model6)
+```
+
+## RGB regressions
+
+pre, nix rgb regression
+
+```{r}
+x5 = x %>% filter(retail == 'pre') %>% dplyr::select(cmc, nix_red, nix_green, nix_blue)
+
+x5 %>% ggplot(aes(y = cmc, x= nix_red)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+
+x5 %>% ggplot(aes(y = cmc, x= nix_green)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+
+x5 %>% ggplot(aes(y = cmc, x= nix_blue)) + 
+  geom_point() + 
+  geom_smooth(method = "lm") 
+```
+
+```{r}
+rgb_model = lm(cmc ~ nix_red + nix_green + nix_blue, data = x5)
+summary(rgb_model)
+```
+
+```{r}
+rgb_model2 = lm(cmc ~ nix_red * nix_green * nix_blue - nix_red : nix_green : nix_blue, data = x5)
+summary(rgb_model2)
+
+anova(rgb_model, rgb_model2)
+```
+
+```{r}
+rgb_model3 = lm(cmc ~ nix_red * nix_green * nix_blue, data = x5)
+summary(rgb_model3)
+
+anova(rgb_model, rgb_model3)
+```
+
+```{r}
+rgb_model4 = lm(cmc ~ nix_red + nix_green + nix_blue + I(nix_red^2) + I(nix_green ^2) + I(nix_blue^2), data = x5)
+summary(rgb_model4)
+anova(rgb_model, rgb_model4)
+```
+
+```{r}
+rgb_model5 = lm(cmc ~ nix_red * nix_green * nix_blue + I(nix_red^2) + I(nix_green ^2) + I(nix_blue^2), data = x5)
+summary(rgb_model5)
+anova(rgb_model, rgb_model5)
+```
+
+```{r}
+rgb_model6 = lm(cmc ~ nix_red + nix_green + nix_blue + nix_red : nix_green + nix_red : nix_blue, data = x5)
+summary(rgb_model6)
+anova(rgb_model, rgb_model6)
+
+```
+
+```{r}
+rgb_model7 = lm(cmc~ I(nix_red ^-1) + I(nix_green ^-1) + I(nix_blue ^-1), data = x5)
+summary(rgb_model7)
+anova(rgb_model, rgb_model7)
+```
+
+```{r}
+rgb_model8 = lm(cmc~ I(nix_red ^-1) + I(nix_green ^-1) + I(nix_blue ^-1) + nix_red + nix_green + nix_blue, data = x5)
+summary(rgb_model8)
+anova(rgb_model, rgb_model8)
+```
+
+
+```{r}
+lab_model = lm(cmc ~ hunter_l + hunter_a + hunter_b + I(hunter_l ^-1) + I(hunter_a ^-1) + I(hunter_b ^-1), data = x2)
+summary(lab_model)
+anova(cmc_model, lab_model)
+```
+
+```{r}
+lab_model2 = lm(cmc ~ I(hunter_l ^-1) + I(hunter_a ^-1) + I(hunter_b ^-1) + hunter_l * hunter_a * hunter_b - hunter_l : hunter_a : hunter_b, data = x2)
+summary(lab_model2)
+anova(cmc_model, lab_model2)
+```
+
+```{r}
+lab_model3 = lm(cmc ~ I(hunter_l ^-1) + I(hunter_a ^-1) + I(hunter_b ^-1) + hunter_l * hunter_a * hunter_b , data = x2)
+summary(lab_model3)
+anova(lab_model2, lab_model3)
+
+anova(cmc_model2, lab_model2)
+
+```
+
+```{r}
+lab_model4 = lm(cmc ~ I(hunter_l ^-1) + I(hunter_a ^-1) + I(hunter_b ^-1) + hunter_l * hunter_a * hunter_b - hunter_l : hunter_a : hunter_b + I(hunter_l ^2) + I(hunter_a ^2) + I(hunter_b ^2), data = x2)
+summary(lab_model4)
+anova(lab_model2, lab_model4)
+```
+
+

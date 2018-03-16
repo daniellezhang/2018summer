@@ -1,0 +1,185 @@
+---
+title: "amc classification"
+author: "Danielle Zhang"
+date: "01/02/2018"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+---
+
+```{r, message = FALSE}
+library(tidyverse)
+
+x = read_csv("data/AtoPandTcmc.csv") %>% 
+  janitor::clean_names() %>% mutate(date = lubridate::as_date(timestamp))
+
+x = x %>% filter(retail == 'pre') %>% 
+  select(amc, hunter_l, hunter_a, hunter_b, nix_l, nix_a, nix_b,
+                nix_cyan, nix_magenta, nix_yellow, nix_key, 
+                nix_red, nix_green, nix_blue)
+x = x %>% mutate(amc_hilo = ifelse(amc <= 3, 0, 1))
+summary(x)
+```
+
+```{r}
+x %>% group_by(amc_hilo) %>% summarise(n = n())
+```
+
+## hunter lab
+
+```{r}
+lab_fit = glm(amc_hilo~hunter_l+hunter_a+hunter_b, family = binomial, data = x)
+summary(lab_fit)
+```
+
+## nix cmyk
+```{r}
+cmyk_fit = glm(amc_hilo~nix_cyan+nix_magenta+nix_yellow+nix_key, family = binomial, data = x)
+summary(cmyk_fit)
+```
+
+## nix rgb
+```{r}
+rgb_fit = glm(amc_hilo~nix_red+nix_green+nix_blue, family = binomial, data = x)
+summary(rgb_fit)
+```
+
+## nix lab
+```{r}
+lab_fit2 = glm(amc_hilo~nix_l+nix_a+nix_b, family = binomial, data = x)
+summary(lab_fit2)
+```
+
+## comparison
+
+```{r}
+anova(rgb_fit, cmyk_fit)
+```
+
+
+```{r}
+amc_probs = predict(lab_fit, type = 'response')
+amc_pred = rep(0, 864)
+amc_pred[amc_probs > 0.5] = 1
+table(amc_pred, x$amc_hilo)
+mean(amc_pred == x$amc_hilo)
+```
+
+
+```{r}
+amc_probs2 = predict(cmyk_fit, type = 'response')
+amc_pred2 = rep(0, 864)
+amc_pred2[amc_probs2 > 0.5] = 1
+table(amc_pred2, x$amc_hilo)
+mean(amc_pred2 == x$amc_hilo)
+```
+
+```{r}
+amc_probs3 = predict(rgb_fit, type = 'response')
+amc_pred3 = rep(0, 864)
+amc_pred3[amc_probs3 > 0.5] = 1
+table(amc_pred3, x$amc_hilo)
+mean(amc_pred3 == x$amc_hilo)
+```
+
+```{r}
+amc_probs4 = predict(lab_fit2, type = 'response')
+amc_pred4 = rep(0, 864)
+amc_pred4[amc_probs4 > 0.5] = 1
+table(amc_pred4, x$amc_hilo)
+mean(amc_pred4 == x$amc_hilo)
+```
+
+## x2: data with all types of measurements
+
+```{r}
+x2 = x %>% na.omit()
+dim(x2)
+x2 %>% group_by(amc_hilo) %>% summarise(n = n())
+```
+
+
+```{r}
+lab_fit_b = glm(amc_hilo~hunter_l+hunter_a+hunter_b, family = binomial, data = x2)
+summary(lab_fit_b)
+```
+
+
+```{r}
+cmyk_fit_b = glm(amc_hilo~nix_cyan+nix_magenta+nix_yellow+nix_key, family = binomial, data = x2)
+summary(cmyk_fit_b)
+```
+
+
+```{r}
+rgb_fit_b = glm(amc_hilo~nix_red+nix_green+nix_blue, family = binomial, data = x2)
+summary(rgb_fit_b)
+```
+
+
+```{r}
+amc_probs5 = predict(lab_fit_b, type = 'response')
+amc_pred5 = rep(0, 284)
+amc_pred5[amc_probs5 > 0.5] = 1
+table(amc_pred5, x2$amc_hilo)
+mean(amc_pred5 == x2$amc_hilo)
+```
+
+
+```{r}
+amc_probs6 = predict(cmyk_fit_b, type = 'response')
+amc_pred6 = rep(0, 284)
+amc_pred6[amc_probs6 > 0.5] = 1
+table(amc_pred6, x2$amc_hilo)
+mean(amc_pred6 == x2$amc_hilo)
+```
+
+
+```{r}
+amc_probs7 = predict(rgb_fit_b, type = 'response')
+amc_pred7 = rep(0, 284)
+amc_pred7[amc_probs7 > 0.5] = 1
+table(amc_pred7, x2$amc_hilo)
+mean(amc_pred7 == x2$amc_hilo)
+```
+
+## linear discriminant analysis
+
+```{r}
+library(MASS)
+lab_lda = lda(amc_hilo~hunter_l+hunter_a+hunter_b, data = x2)
+lab_lda
+```
+
+```{r}
+lda_pred = predict(lab_lda)
+table(lda_pred$class, x2$amc_hilo)
+mean(lda_pred$class == x2$amc_hilo)
+```
+
+```{r}
+rgb_lda = lda(amc_hilo~nix_red+nix_blue+nix_green, data = x2)
+rgb_lda
+```
+
+```{r}
+lda_pred2 = predict(rgb_lda)
+table(lda_pred2$class, x2$amc_hilo)
+mean(lda_pred2$class == x2$amc_hilo)
+```
+
+```{r}
+cymk_lda = lda(amc_hilo~nix_cyan+nix_yellow+nix_magenta+nix_key, data = x2)
+cymk_lda
+```
+
+```{r}
+lda_pred3 = predict(cymk_lda)
+table(lda_pred3$class, x2$amc_hilo)
+mean(lda_pred3$class == x2$amc_hilo)
+```
+
+

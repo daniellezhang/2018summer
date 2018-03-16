@@ -1,0 +1,487 @@
+---
+title: "fda"
+author: "Danielle Zhang"
+date: "25/01/2018"
+output: 
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true
+    code_folding: show
+---
+
+```{r, warning=FALSE, message=FALSE}
+library(janitor)
+library(lubridate)
+library(tidyverse)
+library(fda)
+
+x = read_csv("data/AtoPandTcmc.csv")
+x = x %>% 
+  mutate(
+    amc_hi_lo = (amc > 3)
+  )
+
+x %>% janitor::crosstab(amc_hi_lo,amc)
+
+x = janitor::clean_names(x)
+x = x %>% mutate(date = as_date(timestamp))
+
+outlier = c('C2M9', 'J4S1', 'M3T0', 'Y9G2', 'U2L1', 'H9P5', 'H5A5', 'K9M5', 
+            'Q9D7', 'T4Y5', 'U2C4', 'X1A2', 'E9C9', 'M8E6', 'R7C9', 'E0F8', 
+            'R2H2', 'U5H1', 'U6F0', 'J1T9', 'Y9V6', 'U8A0')
+
+#diff data without outliers
+fdata2 = x %>% dplyr::select(x400_nm:x700_nm, eqsref, retail, amc, date) %>% 
+  na.omit() %>% filter(retail == 'pre', !(eqsref %in% outlier))
+
+fdata2_diff = fdata2
+for (i in c(1:30)){fdata2_diff[i] = fdata2[i + 1] - fdata2[i]}
+
+fdata2_diff = fdata2_diff %>% dplyr::select(eqsref, amc, date, retail, x400_nm:x690_nm)
+fd2_diff = fdata2_diff %>% gather(key = wavelength, value = intensity, -eqsref, -retail, -amc, -date)
+fd2_diff = mutate(fd2_diff, wavelength = as.numeric(substr(wavelength, start=2, stop=4)))
+
+```
+
+
+## Generating FDA objects
+
+### AMC 1
+
+```{r}
+
+fd_1 = fd2_diff %>% filter(amc == 1) %>% dplyr::select(eqsref, wavelength, intensity) %>%
+  spread(key = eqsref, value = intensity)
+
+# fd_test = fd2_diff %>% dplyr::select(eqsref, wavelength, intensity) %>%
+#   spread(key = eqsref, value = intensity)
+
+```
+
+
+IFDA P12:
+```{r}
+wavelengths = seq(400, 690, 10)
+fd_matrix = data.matrix(fd_1)[,-1]
+#
+par(mfrow=c(2,2))
+for(nbasis in c(5,15,20,25)){
+bspline_basis = create.bspline.basis(rangeval = c(400, 690), norder = 5, nbasis = nbasis)
+fda_1 = Data2fd(wavelengths, fd_matrix, basisobj = bspline_basis)
+plot(fda_1, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+title(paste("nbasis = ",nbasis,sep=""))
+}
+par(mfrow=c(1,1))
+# try 17?!?
+bspline_basis = create.bspline.basis(rangeval = c(400, 690), norder = 5, nbasis = 17)
+fda_1 = Data2fd(wavelengths, fd_matrix, basisobj = bspline_basis)
+# AMC1_eqsref = x %>% filter(amc == 1) %>% pull(eqsref) %>% na.omit()
+# AMC2_eqsref = x %>% filter(amc == 2) %>% pull(eqsref) %>% na.omit()
+# fda_test[as.vector(AMC1_eqsref)[1:31]]
+plot(fda_1, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+We picked nbasis to be 17 as it gave smoother results at higher wavelengths.
+
+
+IFDA P13:
+95% confidence interval
+```{r}
+n = ncol(fd_matrix)
+muhat = mean.fd(fda_1)
+sdhat = sd.fd(fda_1)
+se_hat_u = fd(basisobj = bspline_basis)
+se_hat_l = fd(basisobj = bspline_basis)
+se_hat_u$coefs = 2*sdhat$coefs/sqrt(n) + muhat$coefs
+se_hat_l$coefs = -2*sdhat$coefs/sqrt(n) + muhat$coefs
+plot.fd(se_hat_u, ylim = c(-3, 10), col = 'red', lty = 2, xlab = '', ylab = '')
+plot.fd(se_hat_l,add=TRUE,col='blue',lty=2)
+plot.fd(muhat,add=TRUE)
+```
+
+IFDA P15:
+one, two, three SD away fromthe mean
+```{r}
+plot(fda_1, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5, col = 'grey')
+lines(mean(fda_1), lwd = 2)
+lines(mean(fda_1) +std.fd(fda_1), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_1) +2*std.fd(fda_1), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_1) +3*std.fd(fda_1), lwd = 2, lty = 2, col = 'red')
+lines(mean(fda_1) -std.fd(fda_1), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_1) -2*std.fd(fda_1), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_1) -3*std.fd(fda_1), lwd = 2, lty = 2, col = 'red')
+```
+
+
+### AMC 2
+```{r}
+fd_2 = fd2_diff %>% filter(amc == 2) %>% dplyr::select(eqsref, wavelength, intensity) %>%
+  spread(key = eqsref, value = intensity)
+fda_2 = Data2fd(wavelengths, data.matrix(fd_2)[,-1], basisobj = bspline_basis)
+plot(fda_2, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+
+```{r}
+n = ncol(data.matrix(fd_2)[,-1])
+muhat = mean.fd(fda_2)
+sdhat = sd.fd(fda_2)
+se_hat_u = fd(basisobj = bspline_basis)
+se_hat_l = fd(basisobj = bspline_basis)
+se_hat_u$coefs = 2*sdhat$coefs/sqrt(n) + muhat$coefs
+se_hat_l$coefs = -2*sdhat$coefs/sqrt(n) + muhat$coefs
+plot.fd(se_hat_u, ylim = c(-3, 10), col = 'red', lty = 2, xlab = '', ylab = '')
+plot.fd(se_hat_l,add=TRUE,col='blue',lty=2)
+plot.fd(muhat,add=TRUE)
+```
+
+```{r}
+plot(fda_2, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5, col = 'grey')
+lines(mean(fda_2), lwd = 2)
+lines(mean(fda_2) +std.fd(fda_2), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_2) +2*std.fd(fda_2), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_2) +3*std.fd(fda_2), lwd = 2, lty = 2, col = 'red')
+lines(mean(fda_2) -std.fd(fda_2), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_2) -2*std.fd(fda_2), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_2) -3*std.fd(fda_2), lwd = 2, lty = 2, col = 'red')
+```
+
+
+### AMC 3
+```{r}
+fd_3 = fd2_diff %>% filter(amc == 3) %>% dplyr::select(eqsref, wavelength, intensity) %>%
+  spread(key = eqsref, value = intensity)
+fda_3 = Data2fd(wavelengths, data.matrix(fd_3)[,-1], basisobj = bspline_basis)
+plot(fda_3, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+
+```{r}
+n = ncol(data.matrix(fd_3)[,-1])
+muhat = mean.fd(fda_3)
+sdhat = sd.fd(fda_3)
+se_hat_u = fd(basisobj = bspline_basis)
+se_hat_l = fd(basisobj = bspline_basis)
+se_hat_u$coefs = 2*sdhat$coefs/sqrt(n) + muhat$coefs
+se_hat_l$coefs = -2*sdhat$coefs/sqrt(n) + muhat$coefs
+plot.fd(se_hat_u, ylim = c(-3, 10), col = 'red', lty = 2, xlab = '', ylab = '')
+plot.fd(se_hat_l,add=TRUE,col='blue',lty=2)
+plot.fd(muhat,add=TRUE)
+```
+
+```{r}
+plot(fda_3, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5, col = 'grey')
+lines(mean(fda_3), lwd = 2)
+lines(mean(fda_3) +std.fd(fda_3), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_3) +2*std.fd(fda_3), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_3) +3*std.fd(fda_3), lwd = 2, lty = 2, col = 'red')
+lines(mean(fda_3) -std.fd(fda_3), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_3) -2*std.fd(fda_3), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_3) -3*std.fd(fda_3), lwd = 2, lty = 2, col = 'red')
+```
+
+
+### AMC 4
+```{r}
+fd_4 = fd2_diff %>% filter(amc == 4) %>% dplyr::select(eqsref, wavelength, intensity) %>%
+  spread(key = eqsref, value = intensity)
+fda_4 = Data2fd(wavelengths, data.matrix(fd_4)[,-1], basisobj = bspline_basis)
+plot(fda_4, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+
+```{r}
+n = ncol(data.matrix(fd_4)[,-1])
+muhat = mean.fd(fda_4)
+sdhat = sd.fd(fda_4)
+se_hat_u = fd(basisobj = bspline_basis)
+se_hat_l = fd(basisobj = bspline_basis)
+se_hat_u$coefs = 2*sdhat$coefs/sqrt(n) + muhat$coefs
+se_hat_l$coefs = -2*sdhat$coefs/sqrt(n) + muhat$coefs
+plot.fd(se_hat_u, ylim = c(-3, 10), col = 'red', lty = 2, xlab = '', ylab = '')
+plot.fd(se_hat_l,add=TRUE,col='blue',lty=2)
+plot.fd(muhat,add=TRUE)
+```
+
+```{r}
+plot(fda_4, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5, col = 'grey')
+lines(mean(fda_4), lwd = 2)
+lines(mean(fda_4) +std.fd(fda_3), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_4) +2*std.fd(fda_3), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_4) +3*std.fd(fda_3), lwd = 2, lty = 2, col = 'red')
+lines(mean(fda_4) -std.fd(fda_3), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_4) -2*std.fd(fda_3), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_4) -3*std.fd(fda_3), lwd = 2, lty = 2, col = 'red')
+```
+
+
+### AMC 5
+```{r}
+fd_5 = fd2_diff %>% filter(amc == 5) %>% dplyr::select(eqsref, wavelength, intensity) %>%
+  spread(key = eqsref, value = intensity)
+fda_5 = Data2fd(wavelengths, data.matrix(fd_5)[,-1], basisobj = bspline_basis)
+plot(fda_5, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+
+```{r}
+n = ncol(data.matrix(fd_5)[,-1])
+muhat = mean.fd(fda_5)
+sdhat = sd.fd(fda_5)
+se_hat_u = fd(basisobj = bspline_basis)
+se_hat_l = fd(basisobj = bspline_basis)
+se_hat_u$coefs = 2*sdhat$coefs/sqrt(n) + muhat$coefs
+se_hat_l$coefs = -2*sdhat$coefs/sqrt(n) + muhat$coefs
+plot.fd(se_hat_u, ylim = c(-3, 10), col = 'red', lty = 2, xlab = '', ylab = '')
+plot.fd(se_hat_l,add=TRUE,col='blue',lty=2)
+plot.fd(muhat,add=TRUE)
+```
+
+```{r}
+plot(fda_5, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5, col = 'grey')
+lines(mean(fda_5), lwd = 2)
+lines(mean(fda_5) +std.fd(fda_5), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_5) +2*std.fd(fda_5), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_5) +3*std.fd(fda_5), lwd = 2, lty = 2, col = 'red')
+lines(mean(fda_5) -std.fd(fda_5), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_5) -2*std.fd(fda_5), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_5) -3*std.fd(fda_5), lwd = 2, lty = 2, col = 'red')
+```
+
+
+### AMC 0
+```{r}
+fd_0 = fd2_diff %>% filter(amc == 0) %>% dplyr::select(eqsref, wavelength, intensity) %>%
+  spread(key = eqsref, value = intensity)
+fda_0 = Data2fd(wavelengths, data.matrix(fd_0)[,-1], basisobj = bspline_basis)
+plot(fda_0, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+
+```{r}
+n = ncol(data.matrix(fd_0)[,-1])
+muhat = mean.fd(fda_0)
+sdhat = sd.fd(fda_0)
+se_hat_u = fd(basisobj = bspline_basis)
+se_hat_l = fd(basisobj = bspline_basis)
+se_hat_u$coefs = 2*sdhat$coefs/sqrt(n) + muhat$coefs
+se_hat_l$coefs = -2*sdhat$coefs/sqrt(n) + muhat$coefs
+plot.fd(se_hat_u, ylim = c(-3, 10), col = 'red', lty = 2, xlab = '', ylab = '')
+plot.fd(se_hat_l,add=TRUE,col='blue',lty=2)
+plot.fd(muhat,add=TRUE)
+```
+
+```{r}
+plot(fda_0, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5, col = 'grey')
+lines(mean(fda_0), lwd = 2)
+lines(mean(fda_0) +std.fd(fda_0), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_0) +2*std.fd(fda_0), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_0) +3*std.fd(fda_0), lwd = 2, lty = 2, col = 'red')
+lines(mean(fda_0) -std.fd(fda_0), lwd = 2, lty = 2, col = 'green')
+lines(mean(fda_0) -2*std.fd(fda_0), lwd = 2, lty = 2, col = 'yellow')
+lines(mean(fda_0) -3*std.fd(fda_0), lwd = 2, lty = 2, col = 'red')
+```
+
+## fRegress
+### loading data
+```{r}
+x_cmc = x %>% dplyr::select(x400_nm:x700_nm, eqsref, retail, cmc) %>% 
+  na.omit() %>% filter(retail == 'pre', !(eqsref %in% outlier))
+
+x_cmc_diff = x_cmc
+for (i in c(1:30)){x_cmc_diff[i] = x_cmc[i + 1] - x_cmc[i]}
+
+cmc = x_cmc_diff$cmc
+
+x_cmc_diff = x_cmc_diff %>% dplyr::select(eqsref, x400_nm:x690_nm)
+fd_cmc_diff = x_cmc_diff %>% gather(key = wavelength, value = intensity, -eqsref)
+fd_cmc_diff = mutate(fd_cmc_diff, wavelength = as.numeric(substr(wavelength, start=2, stop=4)))
+fd_cmc_diff = fd_cmc_diff %>% spread(key = eqsref, value = intensity)
+```
+
+
+###create fda object
+```{r}
+n = 842 #842 samples
+N = 30 #30 wavelengths
+fda_cmc = Data2fd(wavelengths, data.matrix(fd_cmc_diff)[,-1], bspline_basis)
+plot(fda_cmc, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+###data to fRegress
+```{r}
+cmc_list = vector('list', 2)
+cmc_list[[1]] = rep(1, n) #intercepts
+cmc_list[[2]] = fda_cmc
+
+conbasis = create.constant.basis(c(0,N))
+```
+
+```{r}
+estimation_function = function(n_basis=5){
+  betabasis = create.bspline.basis(rangeval = c(400, 690), norder = 5, nbasis = n_basis) 
+  betalist = vector("list",2)
+  betalist[[1]] = conbasis
+  betalist[[2]] = betabasis
+  
+  fRegressList = fRegress(cmc,cmc_list,betalist)
+  
+  names(fRegressList)
+  
+  betaestlist = fRegressList$betaestlist
+  cmcbeta  = betaestlist[[2]]$fd
+  plot(cmcbeta, xlab="wavelength",
+       ylab="Beta for intensity")
+  
+  # intercept
+  coef(betaestlist[[1]])
+  
+  # assessing the fit
+  
+  cmchat = fRegressList$yhatfdobj
+  cmcres = cmc - cmchat
+  SSE1 = sum(cmcres^2)
+  SSE0 = sum((cmc - mean(cmc))^2)
+  
+  RSQ    = (SSE0-SSE1)/SSE0
+  Fratio = ((SSE0-SSE1)/n_basis)/(SSE1/(n-5-1))
+  return(list(RSQ = RSQ,Fratio = Fratio,SSE0 = SSE0,SSE1 = SSE1))
+}
+
+basises = seq(5,17,1) # nbasis <17
+rsq = vector(length = length(basises))
+for(i in 1:length(basises)) {
+  rsq[i] = estimation_function(n_basis = basises[i])$RSQ
+}
+
+plot(rsq ~ basises)
+```
+
+
+```{r}
+n_basis= 15
+betabasis = create.bspline.basis(rangeval = c(400, 690), norder = 5, nbasis = n_basis) # nbasis <17
+betalist = vector("list",2)
+betalist[[1]] = conbasis
+betalist[[2]] = betabasis
+
+fRegressList = fRegress(cmc,cmc_list,betalist)
+names(fRegressList)
+pred_y = fRegressList$yhatfdobj
+plot(cmc ~ pred_y)
+abline(a = 0, b =1)
+```
+
+### beta confidence interval
+```{r}
+cmchat = fRegressList$yhatfdobj
+resid = cmc - cmchat
+resid_sq = resid
+for (i in resid_sq){resid_sq[i] = resid[i]^2}
+SigmaE.= sum(resid_sq)/(n-fRegressList$df)
+SigmaE = SigmaE.*diag(rep(1,n))
+y2cMap = fRegressList$y2cMap
+stderrList = fRegress.stderr(fRegressList, y2cMap,
+                             SigmaE)
+betaestlist = fRegressList$betaestlist
+betafdPar = betaestlist[[2]]
+betafd = betafdPar$fd
+betastderrList = stderrList$betastderrlist
+betastderrfd = betastderrList[[2]]
+plot(betafd, xlab="Wavelength",
+     ylab="Intensity Reg. Coeff.",
+     ylim=c(-1, 1), lwd=2)
+lines(betafd+2*betastderrfd, lty=2, lwd=1)
+lines(betafd-2*betastderrfd, lty=2, lwd=1)
+```
+
+## deriv.fd
+### loeading data
+```{r}
+fd_cmc = x_cmc %>% dplyr::select(eqsref, x400_nm:x700_nm) %>% 
+  gather(key = wavelength, value = intensity, -eqsref) %>%
+  mutate(wavelength = as.numeric(substr(wavelength, start=2, stop=4))) %>% 
+  spread(key = eqsref, value = intensity)
+```
+
+### create first fda object
+```{r, warning = FALSE, message = FALSE}
+wavelengths_b = seq(400, 700, 10)
+n_basis = 10
+cmc_basis = create.bspline.basis(rangeval = c(400, 700), norder = 5, nbasis = n_basis)
+fda_cmc_b = Data2fd(wavelengths_b, data.matrix(fd_cmc)[,-1], cmc_basis)
+plot(fda_cmc_b, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+
+### first order derivative fda
+```{r}
+fda_deriv = deriv.fd(fda_cmc_b, 1)
+par(mfrow = c(1,1))
+plot(fda_deriv, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+plot(fda_cmc, xlab = 'wavelength', ylab = 'intensity', lwd = 1.5)
+```
+
+
+```{r}
+n = 842
+N = 31 #31 wavelength
+deriv_list = vector('list', 2)
+deriv_list[[1]] = rep(1, n) #intercepts
+deriv_list[[2]] = fda_deriv
+conbasis2 = create.constant.basis(c(0,N))
+
+estimation_function2 = function(n_basis=5){
+  betabasis = create.bspline.basis(rangeval = c(400, 700), norder = 5, nbasis = n_basis) 
+  betalist = vector("list",2)
+  betalist[[1]] = conbasis
+  betalist[[2]] = betabasis
+  
+  fRegressList = fRegress(cmc,deriv_list,betalist)
+  
+  names(fRegressList)
+  
+  betaestlist = fRegressList$betaestlist
+  cmcbeta  = betaestlist[[2]]$fd
+  plot(cmcbeta, xlab="wavelength",
+       ylab="Beta for intensity")
+  
+  # intercept
+  coef(betaestlist[[1]])
+  
+  # assessing the fit
+  
+  cmchat = fRegressList$yhatfdobj
+  cmcres = cmc - cmchat
+  SSE1 = sum(cmcres^2)
+  SSE0 = sum((cmc - mean(cmc))^2)
+  
+  RSQ    = (SSE0-SSE1)/SSE0
+  Fratio = ((SSE0-SSE1)/n_basis)/(SSE1/(n-5-1))
+  return(list(RSQ = RSQ,Fratio = Fratio,SSE0 = SSE0,SSE1 = SSE1))
+}
+
+basises = seq(5,9,1) # nbasis <17
+rsq = vector(length = length(basises))
+for(i in 1:length(basises)) {
+  rsq[i] = estimation_function2(n_basis = basises[i])$RSQ
+}
+
+plot(rsq ~ basises)
+```
+
+```{r}
+#choose 8 for nbasis
+betabasis2 = create.bspline.basis(rangeval = c(400, 700), norder = 5, nbasis = 8)
+betalist2 = vector("list",2)
+betalist2[[1]] = conbasis2
+betalist2[[2]] = betabasis2
+
+fRegressList2 = fRegress(cmc,deriv_list,betalist2)
+predicted_cmc = fRegressList2$yhatfdobj
+plot(cmc ~ predicted_cmc)
+abline(a = 0, b =1)
+```
+
+
